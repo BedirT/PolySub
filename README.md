@@ -20,43 +20,15 @@ PolySub is a simple yet powerful GUI-based application that allows you to genera
 - Python packages: `os`, `tkinter`, `threading`, `customtkinter`, `subsai`
 
 
-
 ## Installation
-
-### Requirements
-
-This project has a number of Python package requirements which are listed in the `requirements.txt` file.
-
-To install these requirements, use pip in the following way:
-
-```bash
-pip install -r requirements.txt
-```
-
-It's recommended to use a virtual environment to avoid any package conflicts.
-
-Here is an example of how you can set up a virtual environment for this project:
-
-```bash
-python -m venv env
-source env/bin/activate  # On Windows use `env\Scripts\activate`
-pip install -r requirements.txt
-```
-
-When you're done working on the project, you can deactivate the virtual environment:
-
-```bash
-deactivate
-```
-
-If you're using a different shell or operating system, the commands for activating and deactivating the virtual environment might be different. You can find more information in the Python [documentation](https://docs.python.org/3/library/venv.html).
 
 To install this application, you can clone the repository and run the script:
 
 ```bash
 git clone https://github.com/BedirT/PolySub
-cd yourrepo
-python SubtitleApp.py
+cd PolySub
+pip install -r requirements.txt
+python main.py
 ```
 
 ## Usage
