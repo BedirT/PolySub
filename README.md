@@ -17,18 +17,35 @@ PolySub is a simple yet powerful GUI-based application that allows you to genera
 ## Prerequisites
 
 - Python 3.6 or later
-- Python packages: `os`, `tkinter`, `threading`, `customtkinter`, `subsai`
-
 
 ## Installation
 
-To install this application, you can clone the repository and run the script:
+This project requires additional dependencies besides Python packages.
+
+### FFmpeg
+
+SubtitleApp requires FFmpeg to process video files.
+
+#### macOS
+
+On macOS, you can install FFmpeg with Homebrew:
 
 ```bash
-git clone https://github.com/BedirT/PolySub
-cd PolySub
+brew install ffmpeg
+```
+
+#### Windows
+
+On Windows, you can download FFmpeg from the [official website](https://www.ffmpeg.org/download.html). After downloading, extract the files and add the bin directory to your PATH. You can find instructions on how to do this [here](https://www.wikihow.com/Install-FFmpeg-on-Windows).
+
+### Python Packages
+
+You will also need to install several Python packages.
+
+```bash
+pip install setuptools-rust
 pip install -r requirements.txt
-python main.py
+pip install git+https://github.com/abdeladim-s/subsai
 ```
 
 ## Usage
