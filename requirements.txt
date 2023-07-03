@@ -1,3 +1,2 @@
-tkinter
+tk
 customtkinter
-subsai
