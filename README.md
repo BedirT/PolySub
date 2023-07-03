@@ -1,10 +1,12 @@
-# PolySub
-
 <div align="center">
-  <img src="images/logo@8x.png" alt="Logo" width="200">
+  <img src="images/logo@8x.png" alt="Logo" width="300">
 </div>
-
+<br>
+<br>
+<div align="center">
 PolySub is a simple yet powerful GUI-based application that allows you to generate and translate subtitles for any video content. The application leverages the power of the state-of-the-art `SubsAI` module, using machine learning to perform transcription and translation.
+</div>
+<br>
 
 ## Features
 
