@@ -38,6 +38,16 @@ brew install ffmpeg
 
 On Windows, you can download FFmpeg from the [official website](https://www.ffmpeg.org/download.html). After downloading, extract the files and add the bin directory to your PATH. You can find instructions on how to do this [here](https://www.wikihow.com/Install-FFmpeg-on-Windows).
 
+### tkinker
+
+Sometimes tkinker is not installed by default in your system. You may need to install it manually.
+
+#### macOS
+
+```bash
+brew install python-tk
+```
+
 ### Python Packages
 
 You will also need to install several Python packages.
