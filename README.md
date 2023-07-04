@@ -20,7 +20,12 @@ PolySub is a simple yet powerful GUI-based application that allows you to genera
 
 ## Installation
 
-This project requires additional dependencies besides Python packages.
+This project requires additional dependencies besides Python packages. It is suggested to use a virtual environment to install the dependencies:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
 ### FFmpeg
 
@@ -38,6 +43,14 @@ brew install ffmpeg
 
 On Windows, you can download FFmpeg from the [official website](https://www.ffmpeg.org/download.html). After downloading, extract the files and add the bin directory to your PATH. You can find instructions on how to do this [here](https://www.wikihow.com/Install-FFmpeg-on-Windows).
 
+#### Linux
+
+On Linux, you can install FFmpeg with your package manager. For example, on Ubuntu, you can run:
+
+```bash
+sudo apt install ffmpeg
+```
+
 ### tkinker
 
 Sometimes tkinker is not installed by default in your system. You may need to install it manually.
@@ -48,12 +61,17 @@ Sometimes tkinker is not installed by default in your system. You may need to in
 brew install python-tk
 ```
 
+#### Linux (Ubuntu)
+  
+```bash
+sudo apt-get install python3-tk
+```
+
 ### Python Packages
 
 You will also need to install several Python packages.
 
 ```bash
-pip install setuptools-rust
 pip install -r requirements.txt
 pip install git+https://github.com/abdeladim-s/subsai
 ```
