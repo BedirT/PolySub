@@ -133,30 +133,17 @@ def detect_system_specs() -> Dict:
         "available": has_mlx,
     }
 
-    engines["mlx-whisper"] = {
-        "device_options": [device_option("mlx", "Apple MLX GPU", has_mlx)],
-        "model_options": {
-            "default": "mlx-community/whisper-large-v3-turbo" if has_mlx else None,
-            "choices": ["mlx-community/whisper-large-v3-turbo"],
-        },
-        "batch_sizes": [4, 8, 12],
-        "available": has_mlx,
-    }
-
-    engines["gpt-4o-transcribe"] = {
+    engines["openai"] = {
         "device_options": [device_option("cloud", "Cloud", True)],
-        "model_options": {"default": None, "choices": []},
+        "model_options": {
+            "default": "gpt-4o-transcribe",
+            "choices": ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+        },
         "batch_sizes": [],
     }
-    engines["gpt-4o-mini-transcribe"] = engines["gpt-4o-transcribe"]
     engines["assemblyai"] = {
         "device_options": [device_option("cloud", "Cloud", True)],
         "model_options": {"default": None, "choices": []},
-        "batch_sizes": [],
-    }
-    engines["speech-recognition"] = {
-        "device_options": [device_option("cpu", "CPU", True)],
-        "model_options": {"default": "base", "choices": ["tiny", "base", "small"]},
         "batch_sizes": [],
     }
 
