@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass
-from pydoc import text
 from typing import Dict, Iterable, List, Sequence
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from app.config import settings
 from app.engines.types import Segment, TranslationResult
@@ -21,13 +21,8 @@ except ImportError:  # pragma: no cover
 MAX_SEGMENTS_PER_REQUEST = 500
 
 
-class SubtitleTranslations(BaseModel):
-    """Structured response schema for subtitle batches."""
-
-    translations: Dict[str, str] = Field(
-        description="Mapping of timestamp cues to translated subtitle text"
-    )
-
+class _SubtitleModelBase(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
 @dataclass
 class SubtitleChunk:
@@ -130,6 +125,9 @@ class TranslationService:
             "segments": payload_segments,
         }
 
+        timestamps = [segment["timestamp"] for segment in payload_segments]
+        SubtitleTranslations = _build_subtitle_model(timestamps)
+
         response = self.client.responses.parse(
             model=model,
             input=[
@@ -139,12 +137,8 @@ class TranslationService:
                     "content": json.dumps(request_payload, ensure_ascii=False),
                 },
             ],
-            reasoning={
-                "level": "minimal",
-            },
-            text={
-                "verbosity": "low",
-            },
+            reasoning={"effort": "minimal"},
+            text={"verbosity": "low"},
             text_format=SubtitleTranslations,
         )
 
@@ -183,3 +177,34 @@ def _format_single_timestamp(seconds: float) -> str:
     minutes, remainder = divmod(remainder, 60_000)
     secs, millis = divmod(remainder, 1000)
     return f"{hours:02}:{minutes:02}:{secs:02},{millis:03}"
+
+
+def _timestamp_to_field_name(timestamp: str) -> str:
+    sanitized = re.sub(r"[^0-9a-zA-Z]+", "_", timestamp).strip("_")
+    return f"ts_{sanitized.lower()}"
+
+
+def _build_subtitle_model(timestamps: Sequence[str]) -> type[BaseModel]:
+    fields: Dict[str, tuple[type, Field]] = {}
+    mapping: Dict[str, str] = {}
+    for ts in timestamps:
+        base_name = _timestamp_to_field_name(ts)
+        candidate = base_name
+        suffix = 1
+        while candidate in fields:
+            suffix += 1
+            candidate = f"{base_name}_{suffix}"
+        mapping[candidate] = ts
+        fields[candidate] = (str, Field(..., alias=ts, description="Translated subtitle text"))
+
+    model = create_model(
+        "SubtitleTranslations",
+        __base__=_SubtitleModelBase,
+        **fields,
+    )
+
+    def _translations(self) -> Dict[str, str]:
+        return {alias: getattr(self, field) for field, alias in mapping.items()}
+
+    setattr(model, "translations", property(_translations))
+    return model
