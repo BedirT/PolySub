@@ -1,6 +1,0 @@
-flet
-setuptools-rust
-tk
-customtkinter
-torch
-torchvision
