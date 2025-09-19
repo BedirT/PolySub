@@ -1,0 +1,45 @@
+[project]
+name = "polysub-backend"
+version = "0.1.0"
+description = "Local-first transcription and translation backend for PolySub"
+authors = [{name = "PolySub"}]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.111",
+  "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
+  "pydantic>=2.8",
+  "pydantic-settings>=2.4",
+  "aiofiles>=23.2",
+  "httpx>=0.27",
+  "openai>=1.30",
+  "assemblyai>=0.36",
+  "faster-whisper>=1.0",
+  "whisperx>=3.1",
+  "SpeechRecognition>=3.10",
+  "numpy>=1.26",
+  "rich>=13.7"
+]
+
+[project.optional-dependencies]
+cuda = [
+  "nvidia-cublas-cu12",
+  "nvidia-cudnn-cu12"
+]
+mlx = [
+  "lightning-whisper-mlx>=0.0.10"
+]
+
+[tool.uvicorn]
+app = "app.main:app"
+reload = true
+host = "0.0.0.0"
+port = 8000
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]

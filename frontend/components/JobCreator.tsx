@@ -1,0 +1,531 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { Loader2, UploadCloud } from "lucide-react";
+import useSWR from "swr";
+import { createJob, fetchSystemSpecs } from "../lib/api";
+import type { Job, JobOptions, SystemSpecs } from "../lib/types";
+
+const ENGINES = [
+  { value: "faster-whisper", label: "Faster Whisper (Local)" },
+  { value: "whisperx", label: "WhisperX Align + Diarization" },
+  { value: "lightning-whisper-mlx", label: "Lightning Whisper (MLX)" },
+  { value: "gpt-4o-transcribe", label: "OpenAI gpt-4o-transcribe" },
+  { value: "gpt-4o-mini-transcribe", label: "OpenAI gpt-4o-mini-transcribe" },
+  { value: "assemblyai", label: "AssemblyAI" },
+  { value: "speech-recognition", label: "SpeechRecognition (Legacy)" },
+];
+const LANG_CHOICES = [
+  { value: "en", label: "English" },
+  { value: "tr", label: "Turkish" },
+  { value: "fa", label: "Persian" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+];
+
+interface Props {
+  onJobCreated(job: Job): void;
+}
+
+export function JobCreator({ onJobCreated }: Props) {
+  const [file, setFile] = useState<File | null>(null);
+  const [engine, setEngine] = useState("faster-whisper");
+  const [model, setModel] = useState("large-v3");
+  const [translationModel, setTranslationModel] = useState("gpt-5-nano");
+  const [translationLanguages, setTranslationLanguages] = useState<string[]>(["en", "tr", "fa"]);
+  const [alignment, setAlignment] = useState(true);
+  const [diarization, setDiarization] = useState(false);
+  const [formats, setFormats] = useState<string[]>(["srt", "vtt"]);
+  const [device, setDevice] = useState<string>("auto");
+  const [batchSize, setBatchSize] = useState<number | null>(null);
+  const [quantization, setQuantization] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [useCustomKeys, setUseCustomKeys] = useState(false);
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [assemblyKey, setAssemblyKey] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+
+  const { data: systemSpecs } = useSWR<SystemSpecs>("system-specs", fetchSystemSpecs, {
+    revalidateOnFocus: false,
+  });
+
+  const engineMeta = useMemo(() => systemSpecs?.engines?.[engine], [systemSpecs, engine]);
+  const engineOptions = useMemo(() => {
+    return ENGINES.map((option) => {
+      const meta = systemSpecs?.engines?.[option.value];
+      const hasDevice = meta?.device_options?.some((d) => d.available) ?? true;
+      const available = meta?.available === false ? false : hasDevice;
+      return { ...option, disabled: !available };
+    });
+  }, [systemSpecs]);
+
+  const modelChoices = engineMeta?.model_options?.choices ?? [];
+  const deviceOptions = engineMeta?.device_options ?? [];
+  const batchOptions = engineMeta?.batch_sizes ?? [];
+  const quantOptions = engineMeta?.quantizations ?? [];
+
+  useEffect(() => {
+    if (!engineMeta) {
+      return;
+    }
+
+    if (modelChoices.length) {
+      const preferred = engineMeta.model_options?.default;
+      const fallback = preferred && modelChoices.includes(preferred) ? preferred : modelChoices[0];
+      if (!modelChoices.includes(model)) {
+        setModel(fallback);
+      }
+    }
+
+    if (deviceOptions.length) {
+      const existing = deviceOptions.find((opt) => opt.id === device && opt.available);
+      if (!existing) {
+        const fallback = deviceOptions.find((opt) => opt.available) ?? deviceOptions[0];
+        if (fallback) {
+          setDevice(fallback.id);
+        }
+      }
+    } else if (device !== "auto") {
+      setDevice("auto");
+    }
+
+    if (batchOptions.length) {
+      if (batchSize === null || !batchOptions.includes(batchSize)) {
+        setBatchSize(batchOptions[Math.min(1, batchOptions.length - 1)] ?? batchOptions[0]);
+      }
+    } else if (batchSize !== null) {
+      setBatchSize(null);
+    }
+
+    if (quantOptions && quantOptions.length) {
+      const preferredQuant = quantOptions.find((q) => q.id === "base") ?? quantOptions[0];
+      if (!quantization || !quantOptions.some((q) => q.id === quantization)) {
+        setQuantization(preferredQuant.id);
+      }
+    } else if (quantization !== null) {
+      setQuantization(null);
+    }
+  }, [engineMeta, modelChoices, deviceOptions, batchOptions, quantOptions, model, device, batchSize, quantization]);
+  const engineOptions = useMemo(() => {
+    return ENGINES.map((option) => {
+      const meta = systemSpecs?.engines?.[option.value];
+      const hasDevice = meta?.device_options?.some((d) => d.available) ?? true;
+      const available = meta?.available === false ? false : hasDevice;
+      return { ...option, disabled: !available };
+    });
+  }, [systemSpecs]);
+
+  const modelChoices = engineMeta?.model_options?.choices ?? [];
+  const deviceOptions = engineMeta?.device_options ?? [];
+  const batchOptions = engineMeta?.batch_sizes ?? [];
+  const quantOptions = engineMeta?.quantizations ?? [];
+
+  useEffect(() => {
+    const storedUseCustom = localStorage.getItem("polysub.useCustomKeys");
+    const storedOpenai = localStorage.getItem("polysub.openaiKey");
+    const storedAssembly = localStorage.getItem("polysub.assemblyKey");
+    if (storedUseCustom) setUseCustomKeys(storedUseCustom === "true");
+    if (storedOpenai) setOpenaiKey(storedOpenai);
+    if (storedAssembly) setAssemblyKey(storedAssembly);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("polysub.useCustomKeys", String(useCustomKeys));
+  }, [useCustomKeys]);
+
+  useEffect(() => {
+    localStorage.setItem("polysub.openaiKey", openaiKey);
+  }, [openaiKey]);
+
+  useEffect(() => {
+    localStorage.setItem("polysub.assemblyKey", assemblyKey);
+  }, [assemblyKey]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!file) {
+      setError("Select a media file first");
+      return;
+    }
+    setError(null);
+    setIsSubmitting(true);
+    const modelChoices = engineMeta?.model_options?.choices ?? [];
+    const options: JobOptions = {
+      engine,
+      local_model_size: modelChoices.length && modelChoices.includes(model) ? model : undefined,
+      translation_languages: translationLanguages,
+      translation_model: translationLanguages.length ? translationModel : "none",
+      enable_alignment: alignment,
+      enable_diarization: diarization,
+      output_formats: formats,
+      burn_subtitles: false,
+    };
+    if (engineMeta?.device_options?.length) {
+      options.preferred_device = device === "auto" ? undefined : device;
+    }
+    if (batchSize !== null && (engineMeta?.batch_sizes ?? []).includes(batchSize)) {
+      options.batch_size = batchSize;
+    } else {
+      options.batch_size = undefined;
+    }
+    if (quantization && quantization !== "base") {
+      options.quantization = quantization;
+    } else {
+      options.quantization = undefined;
+    }
+    if (useCustomKeys) {
+      options.openai_api_key = openaiKey.trim() || undefined;
+      options.assemblyai_api_key = assemblyKey.trim() || undefined;
+    }
+    try {
+      const job = await createJob(file, options);
+      onJobCreated(job);
+      setIsSubmitting(false);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      setError(err?.message ?? "Failed to create job");
+    }
+  };
+
+  const toggleLanguage = (value: string) => {
+    setTranslationLanguages((langs) =>
+      langs.includes(value) ? langs.filter((lang) => lang !== value) : [...langs, value]
+    );
+  };
+
+  const toggleFormat = (value: string) => {
+    setFormats((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
+    );
+  };
+
+  const assignFile = (newFile: File | undefined) => {
+    if (newFile) {
+      setFile(newFile);
+      setIsDragging(false);
+      if (error) setError(null);
+    }
+  };
+
+  const onFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const next = event.target.files?.[0];
+    assignFile(next);
+  };
+
+  const onDrop = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    const dropped = event.dataTransfer?.files?.[0];
+    assignFile(dropped);
+  };
+
+  const onDragOver = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const onDragLeave = (event: React.DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
+
+  return (
+    <motion.form
+      onSubmit={handleSubmit}
+      className="flex flex-col gap-6 rounded-3xl border border-slate-800 bg-slate-900/60 p-8 shadow-soft backdrop-blur"
+      initial={{ opacity: 0, translateY: 20 }}
+      animate={{ opacity: 1, translateY: 0 }}
+    >
+      <div>
+        <h2 className="text-2xl font-semibold text-white">Create a new transcription job</h2>
+        <p className="text-sm text-slate-400">
+          Everything runs locally except the AI APIs you opt into. Pick your engine and translation targets.
+        </p>
+        {systemSpecs && (
+          <p className="text-xs text-slate-500">
+            Detected {systemSpecs.os} ({systemSpecs.arch}) · GPU: {systemSpecs.capabilities.cuda || systemSpecs.capabilities.mps || systemSpecs.capabilities.mlx ? 'available' : 'CPU only'}
+          </p>
+        )}
+      </div>
+
+      <label
+        htmlFor="file"
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={`flex h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
+          isDragging
+            ? "border-brand bg-slate-900"
+            : "border-slate-700 bg-slate-950/40 hover:border-brand hover:bg-slate-900"
+        }`}
+      >
+        <UploadCloud className="mb-2 h-10 w-10 text-brand" />
+        <span className="text-sm text-slate-300">
+          {file ? file.name : "Drop a movie or audio file, or click to browse"}
+        </span>
+        <input id="file" type="file" accept="video/*,audio/*" className="hidden" onChange={onFileChange} />
+      </label>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-3">
+          <h3 className="font-medium text-slate-200">Transcription engine</h3>
+          <select
+            value={engine}
+            onChange={(event) => setEngine(event.target.value)}
+            className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm text-slate-100"
+          >
+            {engineOptions.map((option) => (
+              <option key={option.value} value={option.value} disabled={option.disabled}>
+                {option.label}{option.disabled ? " (unavailable)" : ""}
+              </option>
+            ))}
+          </select>
+          {engineMeta && (
+            <p className="text-xs text-slate-400">
+              {engineMeta.device_options?.some((opt) => opt.id === 'gpu' && opt.available) || engineMeta.device_options?.some((opt) => opt.id === 'mlx' && opt.available)
+                ? 'Hardware acceleration available for this engine.'
+                : 'Running on CPU fallback for this engine.'}
+            </p>
+          )}
+
+
+          {modelChoices.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Model size</span>
+              {engineMeta?.model_options?.default && (
+                <p className="text-[10px] text-slate-500">Recommended: {engineMeta.model_options.default}</p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {modelChoices.map((choice) => (
+                  <button
+                    key={choice}
+                    type="button"
+                    onClick={() => setModel(choice)}
+                    className={`rounded-full px-4 py-1 text-xs transition ${
+                      model === choice ? "bg-brand text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    }`}
+                  >
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {deviceOptions.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Device target</span>
+              <div className="flex flex-wrap gap-2">
+                {deviceOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => option.available && setDevice(option.id)}
+                    className={`rounded-full px-4 py-1 text-xs transition ${
+                      device === option.id ? "bg-brand text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    } ${option.available ? '' : 'cursor-not-allowed opacity-50'}`}
+                    disabled={!option.available}
+                    title={option.available ? undefined : 'Unavailable on this machine'}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {batchOptions.length > 0 && (
+            <div className="space-y-2">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Batch size</span>
+              <div className="flex flex-wrap gap-2">
+                {batchOptions.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setBatchSize(size)}
+                    className={`rounded-full px-4 py-1 text-xs transition ${
+                      batchSize === size ? "bg-brand text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {quantOptions.length > 0 && engine === "lightning-whisper-mlx" && (
+            <div className="space-y-2">
+              <span className="text-xs uppercase tracking-wide text-slate-400">Quantization</span>
+              <div className="flex flex-wrap gap-2">
+                {quantOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setQuantization(option.id)}
+                    className={`rounded-full px-4 py-1 text-xs transition ${
+                      quantization === option.id ? "bg-brand text-white" : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {engine === "whisperx" && (
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={alignment}
+                  onChange={(event) => setAlignment(event.target.checked)}
+                  className="rounded border border-slate-600 bg-slate-900"
+                />
+                Run alignment (WhisperX)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={diarization}
+                  onChange={(event) => setDiarization(event.target.checked)}
+                  className="rounded border border-slate-600 bg-slate-900"
+                />
+                Enable speaker diarization
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <h3 className="font-medium text-slate-200">Translation</h3>
+          <div className="flex flex-wrap gap-2">
+            {LANG_CHOICES.map((lang) => (
+              <button
+                key={lang.value}
+                type="button"
+                onClick={() => toggleLanguage(lang.value)}
+                className={`rounded-full px-4 py-1 text-xs transition ${
+                  translationLanguages.includes(lang.value)
+                    ? "bg-brand text-white"
+                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                {lang.label}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-2">
+            <span className="text-xs uppercase tracking-wide text-slate-400">Translation model</span>
+            <div className="flex gap-2">
+              {["gpt-5-nano", "gpt-5-mini"].map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  onClick={() => setTranslationModel(choice)}
+                  className={`rounded-full px-4 py-1 text-xs transition ${
+                    translationModel === choice
+                      ? "bg-brand text-white"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-xs uppercase tracking-wide text-slate-400">Outputs</span>
+            <div className="flex gap-3 text-sm text-slate-200">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formats.includes("srt")}
+                  onChange={() => toggleFormat("srt")}
+                  className="rounded border border-slate-600 bg-slate-900"
+                />
+                SRT
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={formats.includes("vtt")}
+                  onChange={() => toggleFormat("vtt")}
+                  className="rounded border border-slate-600 bg-slate-900"
+                />
+                VTT
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white">API keys</h3>
+            <p className="text-xs text-slate-400">
+              Optional: provide keys here if you prefer not to store them in `.env`. Keys stay on this device via local storage.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-200">
+            <input
+              type="checkbox"
+              checked={useCustomKeys}
+              onChange={(event) => setUseCustomKeys(event.target.checked)}
+              className="rounded border border-slate-600 bg-slate-900"
+            />
+            Enable
+          </label>
+        </div>
+
+        {useCustomKeys && (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs uppercase tracking-wide text-slate-400">OpenAI API Key</label>
+              <input
+                type="password"
+                value={openaiKey}
+                placeholder="sk-..."
+                onChange={(event) => setOpenaiKey(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs uppercase tracking-wide text-slate-400">AssemblyAI API Key</label>
+              <input
+                type="password"
+                value={assemblyKey}
+                placeholder="assemblyai-..."
+                onChange={(event) => setAssemblyKey(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+              />
+            </div>
+          </div>
+        )}
+      </section>
+
+      {error && <p className="rounded-lg border border-red-500/40 bg-red-900/30 px-4 py-2 text-sm text-red-200">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={isSubmitting || !file}
+        className="group flex items-center justify-center gap-2 rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white shadow-soft transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Launching job...
+          </>
+        ) : (
+          <>
+            <UploadCloud className="h-4 w-4 transition group-hover:-translate-y-0.5" />
+            Create job
+          </>
+        )}
+      </button>
+    </motion.form>
+  );
+}

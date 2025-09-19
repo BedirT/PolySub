@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+  @apply outline-none ring-2 ring-brand/60;
+}
