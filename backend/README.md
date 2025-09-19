@@ -32,7 +32,7 @@ Providing keys is optional—users can supply them from the dashboard on a per-j
 
 ### Optional MLX acceleration
 
-To enable the Lightning Whisper MLX engine on Apple Silicon, install the optional extras:
+`make setup` will attempt to install the MLX extras automatically on Apple Silicon so the MLX engines are ready immediately. If you skipped the script, install them manually with:
 
 ```bash
 pip install -e .[mlx]

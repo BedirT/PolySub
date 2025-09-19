@@ -11,8 +11,8 @@ __pycache__/
 
 # storage artifacts
 storage/
+mlx_models/
 
 # js
 *.egg-info
 *.egg
-

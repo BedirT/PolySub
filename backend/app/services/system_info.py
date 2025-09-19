@@ -131,6 +131,16 @@ def detect_system_specs() -> Dict:
         "available": has_mlx,
     }
 
+    engines["mlx-whisper"] = {
+        "device_options": [device_option("mlx", "Apple MLX GPU", has_mlx)],
+        "model_options": {
+            "default": "mlx-community/whisper-large-v3-turbo" if has_mlx else None,
+            "choices": ["mlx-community/whisper-large-v3-turbo"],
+        },
+        "batch_sizes": [4, 8, 12],
+        "available": has_mlx,
+    }
+
     engines["gpt-4o-transcribe"] = {
         "device_options": [device_option("cloud", "Cloud", True)],
         "model_options": {"default": None, "choices": []},
@@ -159,4 +169,3 @@ def detect_system_specs() -> Dict:
         },
         "engines": engines,
     }
-*** End Patch

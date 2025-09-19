@@ -11,6 +11,7 @@ const ENGINES = [
   { value: "faster-whisper", label: "Faster Whisper (Local)" },
   { value: "whisperx", label: "WhisperX Align + Diarization" },
   { value: "lightning-whisper-mlx", label: "Lightning Whisper (MLX)" },
+  { value: "mlx-whisper", label: "MLX Whisper (Turbo)" },
   { value: "gpt-4o-transcribe", label: "OpenAI gpt-4o-transcribe" },
   { value: "gpt-4o-mini-transcribe", label: "OpenAI gpt-4o-mini-transcribe" },
   { value: "assemblyai", label: "AssemblyAI" },
@@ -52,6 +53,7 @@ export function JobCreator({ onJobCreated }: Props) {
   });
 
   const engineMeta = useMemo(() => systemSpecs?.engines?.[engine], [systemSpecs, engine]);
+
   const engineOptions = useMemo(() => {
     return ENGINES.map((option) => {
       const meta = systemSpecs?.engines?.[option.value];
@@ -71,18 +73,19 @@ export function JobCreator({ onJobCreated }: Props) {
       return;
     }
 
-    if (modelChoices.length) {
-      const preferred = engineMeta.model_options?.default;
-      const fallback = preferred && modelChoices.includes(preferred) ? preferred : modelChoices[0];
-      if (!modelChoices.includes(model)) {
+    if (engineMeta.model_options?.choices?.length) {
+      const choices = engineMeta.model_options.choices;
+      const preferred = engineMeta.model_options.default;
+      const fallback = preferred && choices.includes(preferred) ? preferred : choices[0];
+      if (!choices.includes(model)) {
         setModel(fallback);
       }
     }
 
-    if (deviceOptions.length) {
-      const existing = deviceOptions.find((opt) => opt.id === device && opt.available);
+    if (engineMeta.device_options?.length) {
+      const existing = engineMeta.device_options.find((opt) => opt.id === device && opt.available);
       if (!existing) {
-        const fallback = deviceOptions.find((opt) => opt.available) ?? deviceOptions[0];
+        const fallback = engineMeta.device_options.find((opt) => opt.available) ?? engineMeta.device_options[0];
         if (fallback) {
           setDevice(fallback.id);
         }
@@ -91,36 +94,24 @@ export function JobCreator({ onJobCreated }: Props) {
       setDevice("auto");
     }
 
-    if (batchOptions.length) {
-      if (batchSize === null || !batchOptions.includes(batchSize)) {
-        setBatchSize(batchOptions[Math.min(1, batchOptions.length - 1)] ?? batchOptions[0]);
+    if (engineMeta.batch_sizes?.length) {
+      const choices = engineMeta.batch_sizes;
+      if (batchSize === null || !choices.includes(batchSize)) {
+        setBatchSize(choices[Math.min(1, choices.length - 1)] ?? choices[0]);
       }
     } else if (batchSize !== null) {
       setBatchSize(null);
     }
 
-    if (quantOptions && quantOptions.length) {
-      const preferredQuant = quantOptions.find((q) => q.id === "base") ?? quantOptions[0];
-      if (!quantization || !quantOptions.some((q) => q.id === quantization)) {
+    if (engineMeta.quantizations?.length) {
+      const preferredQuant = engineMeta.quantizations.find((q) => q.id === "base") ?? engineMeta.quantizations[0];
+      if (!quantization || !engineMeta.quantizations.some((q) => q.id === quantization)) {
         setQuantization(preferredQuant.id);
       }
     } else if (quantization !== null) {
       setQuantization(null);
     }
-  }, [engineMeta, modelChoices, deviceOptions, batchOptions, quantOptions, model, device, batchSize, quantization]);
-  const engineOptions = useMemo(() => {
-    return ENGINES.map((option) => {
-      const meta = systemSpecs?.engines?.[option.value];
-      const hasDevice = meta?.device_options?.some((d) => d.available) ?? true;
-      const available = meta?.available === false ? false : hasDevice;
-      return { ...option, disabled: !available };
-    });
-  }, [systemSpecs]);
-
-  const modelChoices = engineMeta?.model_options?.choices ?? [];
-  const deviceOptions = engineMeta?.device_options ?? [];
-  const batchOptions = engineMeta?.batch_sizes ?? [];
-  const quantOptions = engineMeta?.quantizations ?? [];
+  }, [engineMeta, model, device, batchSize, quantization]);
 
   useEffect(() => {
     const storedUseCustom = localStorage.getItem("polysub.useCustomKeys");
@@ -151,10 +142,10 @@ export function JobCreator({ onJobCreated }: Props) {
     }
     setError(null);
     setIsSubmitting(true);
-    const modelChoices = engineMeta?.model_options?.choices ?? [];
+    const allowedModels = engineMeta?.model_options?.choices ?? [];
     const options: JobOptions = {
       engine,
-      local_model_size: modelChoices.length && modelChoices.includes(model) ? model : undefined,
+      local_model_size: allowedModels.length && allowedModels.includes(model) ? model : undefined,
       translation_languages: translationLanguages,
       translation_model: translationLanguages.length ? translationModel : "none",
       enable_alignment: alignment,

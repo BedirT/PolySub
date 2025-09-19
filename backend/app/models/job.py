@@ -24,6 +24,7 @@ class TranscriptionEngine(str, Enum):
     faster_whisper = "faster-whisper"
     whisperx = "whisperx"
     lightning_mlx = "lightning-whisper-mlx"
+    mlx_whisper = "mlx-whisper"
     openai_gpt4o = "gpt-4o-transcribe"
     openai_gpt4omini = "gpt-4o-mini-transcribe"
     assemblyai = "assemblyai"

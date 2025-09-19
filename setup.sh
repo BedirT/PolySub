@@ -21,6 +21,8 @@ error_exit() {
 PYTHON_BIN=${PYTHON_BIN:-python3}
 NODE_BIN=${NODE_BIN:-node}
 NPM_BIN=${NPM_BIN:-npm}
+UNAME=$(uname -s)
+ARCH=$(uname -m)
 
 info "Checking runtime versions"
 $PYTHON_BIN --version >/dev/null 2>&1 || error_exit "Python 3.10+ required"
@@ -36,7 +38,6 @@ ensure_ffmpeg() {
   fi
 
   info "ffmpeg not detected, attempting installation"
-  UNAME=$(uname -s)
   if [ "$UNAME" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
     if brew install ffmpeg; then
       info "ffmpeg installed via Homebrew"
@@ -71,7 +72,19 @@ source "$BACKEND_DIR/.venv/bin/activate"
 
 info "Installing backend dependencies"
 pip install --upgrade pip
-pip install -e "$BACKEND_DIR"
+install_backend() {
+  local target="$BACKEND_DIR"
+  if [ "$UNAME" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
+    info "Detected Apple Silicon; installing backend with MLX extras"
+    target="${BACKEND_DIR}[mlx]"
+  fi
+  if ! pip install -e "$target"; then
+    warn "Backend install failed for $target. Retrying without optional extras."
+    pip install -e "$BACKEND_DIR" || error_exit "Failed to install backend dependencies"
+  fi
+}
+
+install_backend
 
 deactivate
 

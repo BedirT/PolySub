@@ -27,7 +27,7 @@ Running `make setup`/`./setup.sh` attempts to install `ffmpeg` automatically whe
 
 The dashboard calls `/api/system/specs` on load to detect CPU/GPU capabilities (CUDA, MPS, MLX). Engine pickers light up when acceleration is available and auto-fill sensible defaults for model size, device target, batch size, and (for MLX) quantization. You can still override any of the guided options.
 
-To enable the Lightning Whisper MLX engine on Apple Silicon:
+`make setup` automatically installs the MLX optional dependencies on Apple Silicon so Lightning/MLX engines work out of the box. If you skipped the setup script, install manually with:
 
 ```bash
 cd backend
@@ -59,7 +59,7 @@ Export `OPENAI_API_KEY` / `ASSEMBLYAI_API_KEY` beforehand to pass them into the 
 
 ## Features
 
-- **Local models**: Faster Whisper, WhisperX, and Lightning Whisper (MLX) with guided hardware-aware presets.
+- **Local models**: Faster Whisper, WhisperX, Lightning Whisper (MLX), and MLX Whisper Turbo presets with guided hardware-aware defaults.
 - **Cloud options**: OpenAI `gpt-4o-transcribe` / `gpt-4o-mini-transcribe`, AssemblyAI (leveraging their free credits), and legacy SpeechRecognition pipeline.
 - **Translations**: OpenAI `gpt-5-nano` by default with `gpt-5-mini` fallback for batch subtitle translation; toggle per target language.
 - **Artifacts**: Generates SRT and VTT tracks per language plus raw transcript JSON. Files stay on disk under `storage/<job-id>/`.

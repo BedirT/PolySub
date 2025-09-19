@@ -7,6 +7,7 @@ from app.engines.assemblyai_engine import AssemblyAIEngine
 from app.engines.base import BaseTranscriptionEngine
 from app.engines.faster_whisper_engine import FasterWhisperEngine
 from app.engines.openai_engine import OpenAITranscriptionEngine
+from app.engines.mlx_whisper_engine import MLXWhisperEngine
 from app.engines.speech_recognition_engine import SpeechRecognitionEngine
 from app.engines.types import TranscriptionResult, TranslationResult
 from app.engines.whisperx_engine import WhisperXEngine
@@ -116,6 +117,10 @@ def _select_engine(options: JobOptions) -> BaseTranscriptionEngine:
             batch_size=batch_size,
             quantization=quant,
         )
+    if options.engine == TranscriptionEngine.mlx_whisper:
+        repo = options.local_model_size or "mlx-community/whisper-large-v3-turbo"
+        batch = options.batch_size or 8
+        return MLXWhisperEngine(model_size=repo, batch_size=batch)
     if options.engine == TranscriptionEngine.openai_gpt4o:
         return OpenAITranscriptionEngine("gpt-4o-transcribe", api_key=options.openai_api_key)
     if options.engine == TranscriptionEngine.openai_gpt4omini:
