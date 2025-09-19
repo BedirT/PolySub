@@ -35,6 +35,18 @@ export interface JobOptions {
   preferred_device?: string | null;
   batch_size?: number | null;
   quantization?: string | null;
+  subtitle_lead_in?: number | null;
+  subtitle_linger?: number | null;
+  subtitle_min_gap?: number | null;
+  subtitle_min_duration?: number | null;
+  subtitle_max_chars_per_line?: number | null;
+  subtitle_max_lines?: number | null;
+}
+
+export interface TranslationRequest {
+  languages: string[];
+  model: string;
+  openai_api_key?: string | null;
 }
 
 export interface EngineDeviceOption {
@@ -64,6 +76,14 @@ export interface SystemSpecs {
     mlx: boolean;
   };
   engines: Record<string, EngineSpecs>;
+  subtitle_defaults?: {
+    lead_in: number;
+    linger: number;
+    min_gap: number;
+    min_duration: number;
+    max_chars_per_line: number;
+    max_lines: number;
+  };
 }
 
 export interface Job {

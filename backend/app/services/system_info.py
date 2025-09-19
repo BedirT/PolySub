@@ -5,6 +5,8 @@ import os
 import platform
 from typing import Dict
 
+from app.config import settings
+
 try:  # pragma: no cover
     import torch
 except Exception:  # pylint: disable=broad-except
@@ -168,4 +170,12 @@ def detect_system_specs() -> Dict:
             "mlx": has_mlx,
         },
         "engines": engines,
+        "subtitle_defaults": {
+            "lead_in": settings.subtitle_lead_in,
+            "linger": settings.subtitle_linger,
+            "min_gap": settings.subtitle_min_gap,
+            "min_duration": settings.subtitle_min_duration,
+            "max_chars_per_line": settings.subtitle_max_chars_per_line,
+            "max_lines": settings.subtitle_max_lines,
+        },
     }

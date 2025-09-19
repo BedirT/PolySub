@@ -17,14 +17,6 @@ const ENGINES = [
   { value: "assemblyai", label: "AssemblyAI" },
   { value: "speech-recognition", label: "SpeechRecognition (Legacy)" },
 ];
-const LANG_CHOICES = [
-  { value: "en", label: "English" },
-  { value: "tr", label: "Turkish" },
-  { value: "fa", label: "Persian" },
-  { value: "es", label: "Spanish" },
-  { value: "fr", label: "French" },
-];
-
 interface Props {
   onJobCreated(job: Job): void;
 }
@@ -33,14 +25,18 @@ export function JobCreator({ onJobCreated }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [engine, setEngine] = useState("faster-whisper");
   const [model, setModel] = useState("large-v3");
-  const [translationModel, setTranslationModel] = useState("gpt-5-nano");
-  const [translationLanguages, setTranslationLanguages] = useState<string[]>(["en", "tr", "fa"]);
   const [alignment, setAlignment] = useState(true);
   const [diarization, setDiarization] = useState(false);
   const [formats, setFormats] = useState<string[]>(["srt", "vtt"]);
   const [device, setDevice] = useState<string>("auto");
   const [batchSize, setBatchSize] = useState<number | null>(null);
   const [quantization, setQuantization] = useState<string | null>(null);
+  const [subtitleLeadIn, setSubtitleLeadIn] = useState<number | null>(null);
+  const [subtitleLinger, setSubtitleLinger] = useState<number | null>(null);
+  const [subtitleMinGap, setSubtitleMinGap] = useState<number | null>(null);
+  const [subtitleMinDuration, setSubtitleMinDuration] = useState<number | null>(null);
+  const [subtitleMaxChars, setSubtitleMaxChars] = useState<number | null>(null);
+  const [subtitleMaxLines, setSubtitleMaxLines] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useCustomKeys, setUseCustomKeys] = useState(false);
@@ -53,6 +49,7 @@ export function JobCreator({ onJobCreated }: Props) {
   });
 
   const engineMeta = useMemo(() => systemSpecs?.engines?.[engine], [systemSpecs, engine]);
+  const subtitleDefaults = systemSpecs?.subtitle_defaults;
 
   const engineOptions = useMemo(() => {
     return ENGINES.map((option) => {
@@ -134,6 +131,16 @@ export function JobCreator({ onJobCreated }: Props) {
     localStorage.setItem("polysub.assemblyKey", assemblyKey);
   }, [assemblyKey]);
 
+  useEffect(() => {
+    if (!subtitleDefaults) return;
+    setSubtitleLeadIn((prev) => (prev === null ? subtitleDefaults.lead_in : prev));
+    setSubtitleLinger((prev) => (prev === null ? subtitleDefaults.linger : prev));
+    setSubtitleMinGap((prev) => (prev === null ? subtitleDefaults.min_gap : prev));
+    setSubtitleMinDuration((prev) => (prev === null ? subtitleDefaults.min_duration : prev));
+    setSubtitleMaxChars((prev) => (prev === null ? subtitleDefaults.max_chars_per_line : prev));
+    setSubtitleMaxLines((prev) => (prev === null ? subtitleDefaults.max_lines : prev));
+  }, [subtitleDefaults]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!file) {
@@ -146,8 +153,8 @@ export function JobCreator({ onJobCreated }: Props) {
     const options: JobOptions = {
       engine,
       local_model_size: allowedModels.length && allowedModels.includes(model) ? model : undefined,
-      translation_languages: translationLanguages,
-      translation_model: translationLanguages.length ? translationModel : "none",
+      translation_languages: [],
+      translation_model: "none",
       enable_alignment: alignment,
       enable_diarization: diarization,
       output_formats: formats,
@@ -166,6 +173,14 @@ export function JobCreator({ onJobCreated }: Props) {
     } else {
       options.quantization = undefined;
     }
+    if (engine === "lightning-whisper-mlx") {
+      options.subtitle_lead_in = subtitleLeadIn ?? undefined;
+      options.subtitle_linger = subtitleLinger ?? undefined;
+      options.subtitle_min_gap = subtitleMinGap ?? undefined;
+      options.subtitle_min_duration = subtitleMinDuration ?? undefined;
+      options.subtitle_max_chars_per_line = subtitleMaxChars ?? undefined;
+      options.subtitle_max_lines = subtitleMaxLines ?? undefined;
+    }
     if (useCustomKeys) {
       options.openai_api_key = openaiKey.trim() || undefined;
       options.assemblyai_api_key = assemblyKey.trim() || undefined;
@@ -180,17 +195,53 @@ export function JobCreator({ onJobCreated }: Props) {
     }
   };
 
-  const toggleLanguage = (value: string) => {
-    setTranslationLanguages((langs) =>
-      langs.includes(value) ? langs.filter((lang) => lang !== value) : [...langs, value]
-    );
-  };
-
   const toggleFormat = (value: string) => {
     setFormats((prev) =>
       prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
     );
   };
+
+  const resetSubtitleControls = () => {
+    if (!subtitleDefaults) return;
+    setSubtitleLeadIn(subtitleDefaults.lead_in);
+    setSubtitleLinger(subtitleDefaults.linger);
+    setSubtitleMinGap(subtitleDefaults.min_gap);
+    setSubtitleMinDuration(subtitleDefaults.min_duration);
+    setSubtitleMaxChars(subtitleDefaults.max_chars_per_line);
+    setSubtitleMaxLines(subtitleDefaults.max_lines);
+  };
+
+  const handleFloatChange = (
+    setter: (value: number | null) => void,
+    minValue: number | null = 0
+  ) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = event.target.value;
+      if (raw === "") {
+        setter(null);
+        return;
+      }
+      const parsed = Number(raw);
+      if (Number.isNaN(parsed)) {
+        return;
+      }
+      const clamped = minValue === null ? parsed : Math.max(minValue, parsed);
+      setter(clamped);
+    };
+
+  const handleIntChange = (setter: (value: number | null) => void, minValue = 0) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = event.target.value;
+      if (raw === "") {
+        setter(null);
+        return;
+      }
+      const parsed = Number.parseInt(raw, 10);
+      if (Number.isNaN(parsed)) {
+        return;
+      }
+      setter(Math.max(minValue, parsed));
+    };
 
   const assignFile = (newFile: File | undefined) => {
     if (newFile) {
@@ -366,6 +417,95 @@ export function JobCreator({ onJobCreated }: Props) {
             </div>
           )}
 
+          {engine === "lightning-whisper-mlx" && (
+            <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs uppercase tracking-wide text-slate-400">Subtitle timing</span>
+                  <p className="text-[11px] text-slate-500">
+                    Adjust how early captions appear, how long they linger, and layout limits.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetSubtitleControls}
+                  disabled={!subtitleDefaults}
+                  className="rounded-full border border-slate-700 px-3 py-1 text-[11px] text-slate-300 transition hover:border-brand hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Reset
+                </button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1 text-xs text-slate-300">
+                  <span>Lead-in (seconds)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={subtitleLeadIn ?? ""}
+                    onChange={handleFloatChange(setSubtitleLeadIn, 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-slate-300">
+                  <span>Linger (seconds)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={subtitleLinger ?? ""}
+                    onChange={handleFloatChange(setSubtitleLinger, 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-slate-300">
+                  <span>Minimum gap (seconds)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={subtitleMinGap ?? ""}
+                    onChange={handleFloatChange(setSubtitleMinGap, 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-slate-300">
+                  <span>Minimum duration (seconds)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={subtitleMinDuration ?? ""}
+                    onChange={handleFloatChange(setSubtitleMinDuration, 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-slate-300">
+                  <span>Max characters per line</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={subtitleMaxChars ?? ""}
+                    onChange={handleIntChange(setSubtitleMaxChars, 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-slate-300">
+                  <span>Max lines per caption</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={subtitleMaxLines ?? ""}
+                    onChange={handleIntChange(setSubtitleMaxLines, 0)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+
           {engine === "whisperx" && (
             <div className="space-y-3">
               <label className="flex items-center gap-2 text-sm text-slate-200">
@@ -391,43 +531,7 @@ export function JobCreator({ onJobCreated }: Props) {
         </div>
 
         <div className="space-y-3">
-          <h3 className="font-medium text-slate-200">Translation</h3>
-          <div className="flex flex-wrap gap-2">
-            {LANG_CHOICES.map((lang) => (
-              <button
-                key={lang.value}
-                type="button"
-                onClick={() => toggleLanguage(lang.value)}
-                className={`rounded-full px-4 py-1 text-xs transition ${
-                  translationLanguages.includes(lang.value)
-                    ? "bg-brand text-white"
-                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                }`}
-              >
-                {lang.label}
-              </button>
-            ))}
-          </div>
-          <div className="space-y-2">
-            <span className="text-xs uppercase tracking-wide text-slate-400">Translation model</span>
-            <div className="flex gap-2">
-              {["gpt-5-nano", "gpt-5-mini"].map((choice) => (
-                <button
-                  key={choice}
-                  type="button"
-                  onClick={() => setTranslationModel(choice)}
-                  className={`rounded-full px-4 py-1 text-xs transition ${
-                    translationModel === choice
-                      ? "bg-brand text-white"
-                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                  }`}
-                >
-                  {choice}
-                </button>
-              ))}
-            </div>
-          </div>
-
+          <h3 className="font-medium text-slate-200">Outputs</h3>
           <div className="space-y-2">
             <span className="text-xs uppercase tracking-wide text-slate-400">Outputs</span>
             <div className="flex gap-3 text-sm text-slate-200">
@@ -451,6 +555,9 @@ export function JobCreator({ onJobCreated }: Props) {
               </label>
             </div>
           </div>
+          <p className="text-xs text-slate-500">
+            Need translated captions? Trigger translation from the job card after transcription finishes.
+          </p>
         </div>
       </section>
 

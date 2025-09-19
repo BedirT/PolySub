@@ -46,23 +46,48 @@ class MLXWhisperEngine(BaseTranscriptionEngine):
     def _run_sync(self, job: Job, audio_path: Path, update: ProgressFn) -> TranscriptionResult:
         repo = _model_repo(self.model_size)
         update(10.0, f"Using MLX whisper model {repo}")
-        result = transcribe_audio(
-            str(audio_path),
-            path_or_hf_repo=repo,
-            batch_size=self.batch_size,
-            word_timestamps=True,
-        )
+        try:
+            raw_result = transcribe_audio(
+                str(audio_path),
+                path_or_hf_repo=repo,
+                batch_size=self.batch_size,
+                word_timestamps=True,
+            )
+        except RuntimeError as exc:
+            msg = str(exc)
+            if "load_npz" in msg:
+                raise RuntimeError(
+                    f"Failed to load MLX whisper weights from {repo}. Ensure this repository contains MLX-converted .npz weights or choose a compatible mlx-community model."
+                ) from exc
+            raise
+
         segments: list[Segment] = []
         texts: list[str] = []
-        for idx, seg in enumerate(result.get("segments", []), start=1):
-            text = seg.get("text", "").strip()
-            start = float(seg.get("start", 0.0))
-            end = float(seg.get("end", start))
-            segments.append(Segment(start=start, end=end, text=text, words=seg.get("words")))
+        if isinstance(raw_result, dict):
+            segments_source = raw_result.get("segments") or []
+            language = raw_result.get("language", "unknown")
+        elif isinstance(raw_result, list):
+            segments_source = raw_result
+            language = "unknown"
+        else:
+            raise RuntimeError(f"Unexpected MLX whisper output type: {type(raw_result)!r}")
+
+        for idx, seg in enumerate(segments_source, start=1):
+            if isinstance(seg, dict):
+                text = seg.get("text", "").strip()
+                start = float(seg.get("start", 0.0))
+                end = float(seg.get("end", start))
+                words = seg.get("words")
+            else:
+                text = getattr(seg, "text", "").strip()
+                start = float(getattr(seg, "start", 0.0))
+                end = float(getattr(seg, "end", start))
+                words = getattr(seg, "words", None)
+            segments.append(Segment(start=start, end=end, text=text, words=words))
             texts.append(text)
             progress = 10.0 + min(idx * 0.5, 85.0)
             update(progress, f"Decoding segment {idx}")
-        language = result.get("language", "unknown")
+
         return TranscriptionResult(language=language, segments=segments, text=" ".join(texts).strip())
 
 

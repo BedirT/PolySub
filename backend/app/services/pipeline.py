@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app.config import settings
@@ -9,7 +10,7 @@ from app.engines.faster_whisper_engine import FasterWhisperEngine
 from app.engines.openai_engine import OpenAITranscriptionEngine
 from app.engines.mlx_whisper_engine import MLXWhisperEngine
 from app.engines.speech_recognition_engine import SpeechRecognitionEngine
-from app.engines.types import TranscriptionResult, TranslationResult
+from app.engines.types import Segment, TranscriptionResult, TranslationResult
 from app.engines.whisperx_engine import WhisperXEngine
 from app.engines.lightning_mlx_engine import LightningWhisperMLEngine, AVAILABLE_MODELS as MLX_MODELS
 from app.models.job import Artifact, Job, JobOptions, JobStatus, TranscriptionEngine, TranslationModel
@@ -50,20 +51,6 @@ async def process_job(job: Job) -> None:
     artifacts = [Artifact(kind="transcript-json", path=transcript_path, label="Transcript JSON")]
 
     translations: dict[str, TranslationResult] = {}
-    if options.translation_model != TranslationModel.none and options.translation_languages:
-        try:
-            update_stage_progress(job, JobStatus.translating, "Translating subtitles", local_progress=0.0)
-            translator = TranslationService(api_key=options.openai_api_key)
-            translations = await translator.translate(
-                transcription.segments,
-                transcription.language,
-                options.translation_languages,
-                options.translation_model,
-            )
-            finalize_stage(job, JobStatus.translating, "Translation complete")
-        except Exception as exc:  # pragma: no cover
-            update_stage_progress(job, JobStatus.translating, f"Translation skipped: {exc}")
-            finalize_stage(job, JobStatus.translating, "Translation stage skipped")
 
     update_stage_progress(job, JobStatus.exporting, "Exporting captions", local_progress=0.0)
     base_output_dir = job_dir / "outputs"
@@ -77,6 +64,17 @@ async def process_job(job: Job) -> None:
         vtt_path = base_output_dir / "captions.vtt"
         write_vtt(vtt_path, transcription.segments)
         artifacts.append(Artifact(kind="vtt", path=vtt_path, label="Primary VTT"))
+
+    source_language = (transcription.language or "source").replace(" ", "_").lower()
+    if source_language:
+        if "srt" in options.output_formats:
+            source_srt = base_output_dir / f"captions.{source_language}.srt"
+            write_srt(source_srt, transcription.segments)
+            artifacts.append(Artifact(kind="srt", path=source_srt, label=f"{source_language.upper()} SRT"))
+        if "vtt" in options.output_formats:
+            source_vtt = base_output_dir / f"captions.{source_language}.vtt"
+            write_vtt(source_vtt, transcription.segments)
+            artifacts.append(Artifact(kind="vtt", path=source_vtt, label=f"{source_language.upper()} VTT"))
 
     for lang, result in translations.items():
         if "srt" in options.output_formats:
@@ -112,10 +110,34 @@ def _select_engine(options: JobOptions) -> BaseTranscriptionEngine:
         chosen_model = model_size if model_size in MLX_MODELS else "small"
         batch_size = options.batch_size or 12
         quant = options.quantization
+        lead_in = options.subtitle_lead_in if options.subtitle_lead_in is not None else settings.subtitle_lead_in
+        linger = options.subtitle_linger if options.subtitle_linger is not None else settings.subtitle_linger
+        min_gap = options.subtitle_min_gap if options.subtitle_min_gap is not None else settings.subtitle_min_gap
+        min_duration = (
+            options.subtitle_min_duration
+            if options.subtitle_min_duration is not None
+            else settings.subtitle_min_duration
+        )
+        max_chars_per_line = (
+            options.subtitle_max_chars_per_line
+            if options.subtitle_max_chars_per_line is not None
+            else settings.subtitle_max_chars_per_line
+        )
+        max_lines = (
+            options.subtitle_max_lines
+            if options.subtitle_max_lines is not None
+            else settings.subtitle_max_lines
+        )
         return LightningWhisperMLEngine(
             model_size=chosen_model,
             batch_size=batch_size,
             quantization=quant,
+            lead_in=lead_in,
+            linger=linger,
+            min_gap=min_gap,
+            min_duration=min_duration,
+            max_chars_per_line=max_chars_per_line,
+            max_lines=max_lines,
         )
     if options.engine == TranscriptionEngine.mlx_whisper:
         repo = options.local_model_size or "mlx-community/whisper-large-v3-turbo"
@@ -147,3 +169,75 @@ def _serialize_transcription(result: TranscriptionResult) -> dict:
             for segment in result.segments
         ],
     }
+
+
+def _load_transcript_segments(job: Job) -> tuple[str, list[Segment]]:
+    if not job.transcript_json:
+        raise RuntimeError("Transcript not found for job")
+    data = json.loads(job.transcript_json.read_text())
+    language = data.get("language", "unknown")
+    segments: list[Segment] = []
+    for item in data.get("segments", []):
+        segments.append(
+            Segment(
+                start=float(item.get("start", 0.0)),
+                end=float(item.get("end", 0.0)),
+                text=str(item.get("text", "")),
+                speaker=item.get("speaker"),
+                words=item.get("words"),
+            )
+        )
+    if not segments:
+        raise RuntimeError("Transcript has no segments")
+    return language, segments
+
+
+async def perform_translation(
+    job: Job,
+    target_languages: list[str],
+    translation_model: TranslationModel,
+    openai_api_key: str | None,
+) -> dict[str, TranslationResult]:
+    if translation_model == TranslationModel.none:
+        raise RuntimeError("Translation model must be specified")
+    if not target_languages:
+        raise RuntimeError("At least one target language is required")
+
+    source_language, segments = _load_transcript_segments(job)
+    translator = TranslationService(api_key=openai_api_key or job.options.openai_api_key)
+    return await translator.translate(
+        segments,
+        source_language,
+        target_languages,
+        translation_model,
+    )
+
+
+def write_translation_artifacts(
+    job: Job,
+    translations: dict[str, TranslationResult],
+) -> list[Artifact]:
+    if not translations:
+        return []
+    options = job.options
+    base_output_dir = job.source_path.parent / "outputs"
+    base_output_dir.mkdir(exist_ok=True)
+
+    new_artifacts: list[Artifact] = []
+    for lang, result in translations.items():
+        if "srt" in options.output_formats:
+            srt_path = base_output_dir / f"captions.{lang}.srt"
+            write_srt(srt_path, result.segments)
+            new_artifacts.append(Artifact(kind="srt", path=srt_path, label=f"{lang.upper()} SRT"))
+        if "vtt" in options.output_formats:
+            vtt_path = base_output_dir / f"captions.{lang}.vtt"
+            write_vtt(vtt_path, result.segments)
+            new_artifacts.append(Artifact(kind="vtt", path=vtt_path, label=f"{lang.upper()} VTT"))
+    return new_artifacts
+
+
+__all__ = [
+    "process_job",
+    "perform_translation",
+    "write_translation_artifacts",
+]

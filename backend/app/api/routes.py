@@ -4,8 +4,9 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
-from app.models.job import JobOptions
+from app.models.job import JobOptions, TranslationModel
 from app.services.job_manager import job_manager
 from app.services.system_info import detect_system_specs
 
@@ -30,6 +31,12 @@ def _serialize(job):  # pragma: no cover - simple serialization
         for artifact in job.artifacts
     ]
     return data
+
+
+class TranslationPayload(BaseModel):
+    languages: list[str]
+    model: TranslationModel
+    openai_api_key: str | None = None
 
 
 @router.post("/jobs")
@@ -77,3 +84,20 @@ async def download_artifact(job_id: str, filename: str):
 @router.get("/system/specs")
 async def system_specs():
     return detect_system_specs()
+
+
+@router.post("/jobs/{job_id}/translate")
+async def translate_job(job_id: str, payload: TranslationPayload):
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    try:
+        updated = await job_manager.start_translation(
+            job_id,
+            languages=payload.languages,
+            model=payload.model,
+            openai_api_key=payload.openai_api_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _serialize(updated)

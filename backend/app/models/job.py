@@ -51,6 +51,12 @@ class JobOptions(BaseModel):
     preferred_device: Optional[str] = Field(default=None)
     batch_size: Optional[int] = Field(default=None)
     quantization: Optional[str] = Field(default=None)
+    subtitle_lead_in: Optional[float] = Field(default=None)
+    subtitle_linger: Optional[float] = Field(default=None)
+    subtitle_min_gap: Optional[float] = Field(default=None)
+    subtitle_min_duration: Optional[float] = Field(default=None)
+    subtitle_max_chars_per_line: Optional[int] = Field(default=None)
+    subtitle_max_lines: Optional[int] = Field(default=None)
 
 
 class JobProgress(BaseModel):

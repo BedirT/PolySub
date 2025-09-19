@@ -22,6 +22,12 @@ class Settings(BaseSettings):
             "distil-large-v3",
         ]
     )
+    subtitle_lead_in: float = Field(default=0.15, alias="SUBTITLE_LEAD_IN")
+    subtitle_linger: float = Field(default=0.45, alias="SUBTITLE_LINGER")
+    subtitle_min_gap: float = Field(default=0.08, alias="SUBTITLE_MIN_GAP")
+    subtitle_min_duration: float = Field(default=0.24, alias="SUBTITLE_MIN_DURATION")
+    subtitle_max_chars_per_line: int = Field(default=42, alias="SUBTITLE_MAX_CHARS")
+    subtitle_max_lines: int = Field(default=2, alias="SUBTITLE_MAX_LINES")
 
     class Config:
         env_file = ".env"

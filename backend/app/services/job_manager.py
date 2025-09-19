@@ -10,9 +10,9 @@ import aiofiles
 from fastapi import UploadFile
 
 from app.config import settings
-from app.models.job import Job, JobOptions, JobProgress, JobStatus
-from app.services.pipeline import process_job
-from app.services.progress import TERMINAL_STATUSES
+from app.models.job import Job, JobOptions, JobProgress, JobStatus, TranslationModel
+from app.services.pipeline import perform_translation, process_job, write_translation_artifacts
+from app.services.progress import TERMINAL_STATUSES, finalize_stage, update_stage_progress
 
 
 class JobManager:
@@ -22,6 +22,7 @@ class JobManager:
         self._lock = asyncio.Lock()
         self._worker_task: Optional[asyncio.Task[None]] = None
         self._progress_task: Optional[asyncio.Task[None]] = None
+        self._translation_tasks: Dict[str, asyncio.Task[None]] = {}
 
     async def start(self) -> None:
         if self._worker_task is None:
@@ -40,6 +41,11 @@ class JobManager:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._progress_task
             self._progress_task = None
+        for task in list(self._translation_tasks.values()):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._translation_tasks.clear()
 
     async def _worker_loop(self) -> None:
         while True:
@@ -116,6 +122,85 @@ class JobManager:
         job.status = JobStatus.cancelled
         job.progress.message = "Cancelled"
         return True
+
+    async def start_translation(
+        self,
+        job_id: str,
+        *,
+        languages: list[str],
+        model: TranslationModel,
+        openai_api_key: str | None = None,
+    ) -> Job:
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise ValueError("Job not found")
+            if job.status not in {JobStatus.completed, JobStatus.exporting}:
+                raise ValueError("Job must be completed before translating")
+            if job_id in self._translation_tasks:
+                raise ValueError("Translation already in progress for this job")
+            if not job.transcript_json or not job.transcript_json.exists():
+                raise ValueError("Transcript not available for translation")
+
+            normalized_languages = sorted({lang.lower() for lang in languages if lang})
+            if not normalized_languages:
+                raise ValueError("No translation languages provided")
+            if model == TranslationModel.none:
+                raise ValueError("Translation model must be specified")
+
+            job.options.translation_languages = normalized_languages
+            job.options.translation_model = model
+            if openai_api_key:
+                job.options.openai_api_key = openai_api_key
+
+            update_stage_progress(job, JobStatus.translating, "Translating subtitles", local_progress=0.0)
+            job.error = None
+
+            task = asyncio.create_task(
+                self._run_translation(job_id, normalized_languages, model, openai_api_key)
+            )
+            self._translation_tasks[job_id] = task
+            return job
+
+    async def _run_translation(
+        self,
+        job_id: str,
+        languages: list[str],
+        model: TranslationModel,
+        openai_api_key: str | None,
+    ) -> None:
+        job = self._jobs.get(job_id)
+        if job is None:
+            return
+
+        try:
+            translations = await perform_translation(job, languages, model, openai_api_key)
+            finalize_stage(job, JobStatus.translating, "Translation complete")
+
+            update_stage_progress(job, JobStatus.exporting, "Updating caption artifacts", local_progress=0.0)
+
+            new_artifacts = write_translation_artifacts(job, translations)
+            if new_artifacts:
+                existing_paths = {artifact.path for artifact in new_artifacts}
+                job.artifacts = [
+                    artifact for artifact in job.artifacts if artifact.path not in existing_paths
+                ] + new_artifacts
+
+            finalize_stage(job, JobStatus.exporting, "Artifacts updated")
+            finalize_stage(job, JobStatus.completed, "Job complete")
+        except Exception as exc:  # pragma: no cover - translation failure
+            message = str(exc)
+            job.error = message
+            update_stage_progress(
+                job,
+                JobStatus.translating,
+                f"Translation failed: {message}",
+                local_progress=100.0,
+            )
+            finalize_stage(job, JobStatus.translating, "Translation stage skipped")
+            finalize_stage(job, JobStatus.completed, "Job complete")
+        finally:
+            self._translation_tasks.pop(job_id, None)
 
 
 job_manager = JobManager()

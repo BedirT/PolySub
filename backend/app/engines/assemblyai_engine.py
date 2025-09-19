@@ -39,7 +39,9 @@ class AssemblyAIEngine(BaseTranscriptionEngine):
         update(80.0, "Compiling segments")
         segments: list[Segment] = []
         texts: list[str] = []
-        for utt in transcript.utterances or []:
+
+        utterances = getattr(transcript, "utterances", None) or []
+        for utt in utterances:
             segments.append(
                 Segment(
                     start=float(utt.start) / 1000.0,
@@ -49,5 +51,13 @@ class AssemblyAIEngine(BaseTranscriptionEngine):
                 )
             )
             texts.append(utt.text.strip())
+
+        if not segments and getattr(transcript, "text", None):
+            segments.append(
+                Segment(start=0.0, end=0.0, text=transcript.text.strip())
+            )
+            texts.append(transcript.text.strip())
+
+        language = getattr(transcript, "language", None) or "unknown"
         update(95.0, "AssemblyAI transcription complete")
-        return TranscriptionResult(language=transcript.language or "unknown", segments=segments, text=" ".join(texts))
+        return TranscriptionResult(language=language, segments=segments, text=" ".join(texts))

@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { Job, JobOptions, SystemSpecs } from "./types";
+import type { Job, JobOptions, SystemSpecs, TranslationRequest } from "./types";
 
 const baseURL = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api";
 
@@ -33,5 +33,10 @@ export async function createJob(file: File, options: JobOptions): Promise<Job> {
 
 export async function fetchSystemSpecs(): Promise<SystemSpecs> {
   const response = await client.get<SystemSpecs>("/system/specs");
+  return response.data;
+}
+
+export async function triggerTranslation(jobId: string, payload: TranslationRequest): Promise<Job> {
+  const response = await client.post<Job>(`/jobs/${jobId}/translate`, payload);
   return response.data;
 }
