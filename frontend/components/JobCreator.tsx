@@ -11,11 +11,8 @@ const ENGINES = [
   { value: "faster-whisper", label: "Faster Whisper (Local)" },
   { value: "whisperx", label: "WhisperX Align + Diarization" },
   { value: "lightning-whisper-mlx", label: "Lightning Whisper (MLX)" },
-  { value: "mlx-whisper", label: "MLX Whisper (Turbo)" },
-  { value: "gpt-4o-transcribe", label: "OpenAI gpt-4o-transcribe" },
-  { value: "gpt-4o-mini-transcribe", label: "OpenAI gpt-4o-mini-transcribe" },
+  { value: "openai", label: "OpenAI" },
   { value: "assemblyai", label: "AssemblyAI" },
-  { value: "speech-recognition", label: "SpeechRecognition (Legacy)" },
 ];
 interface Props {
   onJobCreated(job: Job): void;
@@ -325,9 +322,12 @@ export function JobCreator({ onJobCreated }: Props) {
           </select>
           {engineMeta && (
             <p className="text-xs text-slate-400">
-              {engineMeta.device_options?.some((opt) => opt.id === 'gpu' && opt.available) || engineMeta.device_options?.some((opt) => opt.id === 'mlx' && opt.available)
+              {engineMeta.device_options?.some((opt) => opt.id === 'gpu' && opt.available) ||
+              engineMeta.device_options?.some((opt) => opt.id === 'mlx' && opt.available)
                 ? 'Hardware acceleration available for this engine.'
-                : 'Running on CPU fallback for this engine.'}
+                : engineMeta.device_options?.some((opt) => opt.id === 'cloud')
+                  ? 'Runs through the selected cloud provider.'
+                  : 'Running on CPU fallback for this engine.'}
             </p>
           )}
 
